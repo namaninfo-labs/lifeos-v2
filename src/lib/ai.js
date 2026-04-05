@@ -1,16 +1,11 @@
-// ── Gemini API — FREE, no credit card needed ──────────────────────
-// Get key at: https://aistudio.google.com/app/apikey
-
+// ── Gemini API — Free, works from browser ─────────────────────────
 const getKey = () => import.meta.env.VITE_GEMINI_KEY || ''
 
-async function callGemini(prompt, maxTokens = 8192) {
+async function callGemini(prompt) {
   const key = getKey()
-  if (!key || key === 'AIzaSy_your_key_here') {
-    console.warn('⚠️ Gemini key not set. Add VITE_GEMINI_KEY to Vercel environment variables.')
-    return null
-  }
+  if (!key || key.includes('your_key')) return null
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${key}`
 
   try {
     const res = await fetch(url, {
@@ -19,95 +14,85 @@ async function callGemini(prompt, maxTokens = 8192) {
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.8,
-          maxOutputTokens: maxTokens,
+          temperature: 0.7,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json',
         },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        ],
       }),
     })
 
+    if (!res.ok) { console.error('Gemini error:', await res.json()); return null }
+
     const data = await res.json()
-    if (data.error) throw new Error(data.error.message)
-
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!text) throw new Error('Empty response from Gemini')
-    return text
-  } catch (err) {
-    console.error('Gemini API error:', err.message)
-    return null
-  }
-}
+    if (!text) return null
 
-function parseJSON(raw) {
-  if (!raw) return null
-  try {
-    const clean = raw
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim()
+    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     return JSON.parse(clean)
-  } catch {
-    // Try to extract JSON from response
-    const match = raw.match(/\{[\s\S]*\}/)
-    if (match) {
-      try { return JSON.parse(match[0]) } catch { return null }
-    }
+  } catch (err) {
+    console.error('Gemini error:', err.message)
     return null
   }
 }
 
-// ── MAIN FUNCTION: ONE call → complete week-by-week plan ──────────
+// ── ONE call → complete week-by-week plan ─────────────────────────
 export async function generateFullPlan(profile) {
   const totalWeeks = Math.ceil(profile.duration / 7)
-
   const classLabel = {
-    '11': 'Class 11 student',
-    '12': 'Class 12 student',
-    'gap': 'Gap year student (after Class 12)',
-  }[profile.class] || 'Class 12 student'
+    '11': 'Class 11 student in India',
+    '12': 'Class 12 student in India',
+    'gap': 'Gap year student in India (after Class 12)',
+  }[profile.class] || 'Class 12 student in India'
 
-  const prompt = `You are an expert academic and life coach for Indian students.
+  const prompt = `You are an expert life coach for Indian students. Create a complete execution plan.
 
-Create a complete ${profile.duration}-day execution plan for this student:
+Student Profile:
 - Name: ${profile.name}
 - Level: ${classLabel}
 - Stream: ${profile.stream}
 - Primary Target: ${profile.target}
 - Interests: ${profile.interests.join(', ')}
 - Goals: ${profile.goals.join(', ')}
+- Duration: ${profile.duration} days (${totalWeeks} weeks)
 
-RULES:
-1. Create exactly ${totalWeeks} weeks
-2. Each week: 5-7 specific, actionable tasks
-3. Tasks must be VERY specific (not "study math" but "Complete NCERT Chapter 5 Integration — solve all examples + Exercise 5.1 to 5.3")
-4. Mix areas each week: Academic, Finance basics, Mindset/habits, Skills, Projects
-5. Progress builds week over week (early weeks = foundation, later weeks = advanced)
-6. Finance tasks = ONLY learning/understanding (e.g., "Read about compound interest", "Watch what is a SIP video") — never tell to invest money
-7. For ${profile.class} level — make tasks age-appropriate and relevant to Indian student life
-8. Resources must be REAL and FREE (NCERT, YouTube channels, specific apps, Zerodha Varsity for finance, etc.)
+Create exactly ${totalWeeks} weeks with 5-6 tasks each week.
 
-Return ONLY valid JSON (no markdown, no explanation):
+Rules:
+1. Tasks must be VERY specific (not "study math" but "NCERT Ch.5 Integration — solve Exercise 5.1 all questions")
+2. Each week mix: Academic, Finance, Mindset, Skill, Project
+3. Finance tasks = learning only (e.g., "Watch What is SIP on Zerodha Varsity") — NEVER say to invest money
+4. Resources must be real and free (NCERT, YouTube, Zerodha Varsity, specific apps)
+5. Progress builds week over week
+6. Keep tasks realistic for a ${classLabel}
+
+Return ONLY this JSON structure:
 {
-  "planTitle": "Inspiring 1-line title for this plan",
+  "planTitle": "Short inspiring title",
   "totalWeeks": ${totalWeeks},
-  "northStar": "1-line inspiring vision for where ${profile.name} will be after ${profile.duration} days",
+  "northStar": "1-line vision after ${profile.duration} days",
   "weeks": [
     {
       "weekNum": 1,
-      "theme": "Week theme name",
-      "focus": "1-line what this week is about",
+      "theme": "Week theme",
+      "focus": "1-line focus",
       "tasks": [
         {
           "area": "Academic",
-          "title": "Very specific task title",
-          "detail": "Exactly what to do — specific chapters, pages, questions, actions",
+          "title": "Specific task",
+          "detail": "Exactly what to do with chapter/exercise numbers",
           "duration": 45,
-          "resource": "Specific free resource (book/app/YouTube channel/website)"
+          "resource": "Free resource name"
         }
       ]
     }
   ]
 }`
 
-  const raw = await callGemini(prompt, 8192)
-  return parseJSON(raw)
+  return await callGemini(prompt)
 }
